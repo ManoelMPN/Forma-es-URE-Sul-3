@@ -1,0 +1,6 @@
+{
+  "name": "Formações - URE Sul 3",
+  "description": "Painel de acompanhamento de formações de docentes da URE Sul 3 com sincronização automática via Google Sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
