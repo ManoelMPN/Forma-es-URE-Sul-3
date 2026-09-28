@@ -14,8 +14,8 @@ import {
   normalizeKey
 } from './services/dataProcessor';
 
-// Cache key versioned to ensure exact adherence to primary database column E and F sums
-const CACHE_VERSION = 'v6_exact_primary_db';
+// Cache key versioned to ensure exact adherence to real-time sync with 104 schools + NÃO LOCALIZADO
+const CACHE_VERSION = 'v7_real_sync_104escolas';
 const CACHE_KEY_TEACHERS = `ure_sul3_cached_teachers_${CACHE_VERSION}`;
 const CACHE_KEY_UPDATED = `ure_sul3_last_updated_${CACHE_VERSION}`;
 
@@ -40,34 +40,46 @@ const bundledSavedAt: string =
 
 export default function App() {
   const [teachers, setTeachers] = useState<TeacherRecord[]>(() => {
-    // 1. Initial priority: Bundled database data
-    if (bundledTeachers.length > 0) {
-      return bundledTeachers;
-    }
-
-    // 2. Check local cached teachers
+    // 1. Check local cached teachers from a recent upload or online sync
     const saved = localStorage.getItem(CACHE_KEY_TEACHERS);
+    const savedAtLocal = localStorage.getItem('ure_sul3_saved_at');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const valid = parsed.filter((t: TeacherRecord) => t.components && t.components.length > 0);
           if (valid.length > 0) {
-            return valid;
+            // If local storage has a newer or equal timestamp to bundled, use it
+            if (!bundledSavedAt || !savedAtLocal || new Date(savedAtLocal).getTime() >= new Date(bundledSavedAt).getTime()) {
+              return valid;
+            }
           }
         }
       } catch (e) {
         console.error('Failed to parse cached teachers', e);
       }
     }
+
+    // 2. Bundled database data
+    if (bundledTeachers.length > 0) {
+      return bundledTeachers;
+    }
+
     return [];
   });
 
   const [lastUpdated, setLastUpdated] = useState<string>(() => {
+    const localUpdated = localStorage.getItem(CACHE_KEY_UPDATED);
+    const savedAtLocal = localStorage.getItem('ure_sul3_saved_at');
+    if (localUpdated && savedAtLocal && bundledSavedAt) {
+      if (new Date(savedAtLocal).getTime() >= new Date(bundledSavedAt).getTime()) {
+        return localUpdated;
+      }
+    }
     if (bundledLastUpdated) {
       return bundledLastUpdated;
     }
-    return localStorage.getItem(CACHE_KEY_UPDATED) || '--/--/----';
+    return localUpdated || '--/--/----';
   });
 
   const [savedAt, setSavedAt] = useState<string>(() => {
@@ -240,15 +252,24 @@ export default function App() {
           throw new Error('Nenhum docente com componente foi encontrado na estrutura da planilha.');
         }
 
+        // Reset active filters so user immediately sees the total real numbers in the cards
+        setSelectedSchools([]);
+        setSelectedAreas([]);
+        setSelectedComponents([]);
+        setSearchQuery('');
+        setStatusFilter('all');
+
         setTeachers(processed);
         localStorage.setItem(CACHE_KEY_TEACHERS, JSON.stringify(processed));
 
         let newTimestamp = formatDateTimeBR(new Date());
+        let newIso = new Date().toISOString();
         if (data.updatedAt) {
           try {
             const parsedDate = new Date(data.updatedAt);
             if (!isNaN(parsedDate.getTime())) {
               newTimestamp = formatDateTimeBR(parsedDate);
+              newIso = parsedDate.toISOString();
             }
           } catch (e) {
             // fallback to current
@@ -256,9 +277,11 @@ export default function App() {
         }
 
         setLastUpdated(newTimestamp);
+        setSavedAt(newIso);
         localStorage.setItem(CACHE_KEY_UPDATED, newTimestamp);
+        localStorage.setItem('ure_sul3_saved_at', newIso);
 
-        // Persist to src/data/database.json and perform Git commit
+        // Persist to server src/data/database.json, public/database.json, and perform Git commit
         await persistToServerAndGit(processed, newTimestamp, urlToFetch);
       } catch (err: any) {
         console.error('Erro ao sincronizar planilha:', err);
@@ -315,14 +338,24 @@ export default function App() {
         throw new Error('Nenhum docente com componente foi identificado no arquivo enviado. Verifique se o arquivo possui as abas de componentes.');
       }
 
+      // Reset active filters so user immediately sees the total real numbers in the cards
+      setSelectedSchools([]);
+      setSelectedAreas([]);
+      setSelectedComponents([]);
+      setSearchQuery('');
+      setStatusFilter('all');
+
       setTeachers(processed);
       localStorage.setItem(CACHE_KEY_TEACHERS, JSON.stringify(processed));
 
       const newTimestamp = formatDateTimeBR(new Date());
+      const nowIso = new Date().toISOString();
       setLastUpdated(newTimestamp);
+      setSavedAt(nowIso);
       localStorage.setItem(CACHE_KEY_UPDATED, newTimestamp);
+      localStorage.setItem('ure_sul3_saved_at', nowIso);
 
-      // Persist to src/data/database.json and perform Git commit
+      // Persist to server src/data/database.json, public/database.json, server_data/app_data.json
       await persistToServerAndGit(processed, newTimestamp, onlineUrl);
     } catch (err: any) {
       console.error('Erro ao processar arquivo:', err);
@@ -333,17 +366,51 @@ export default function App() {
     }
   };
 
-  // Load saved app data from server or static database on startup
+  // Load saved app data from server or static database on startup with cache busting
   useEffect(() => {
     const fetchAppData = async () => {
-      // 1. Try /api/app-data (Express server)
+      const timestamp = Date.now();
+      // 1. Try /api/app-data (Express server) with cache busting
       try {
-        const res = await fetch('/api/app-data');
+        const res = await fetch(`/api/app-data?_t=${timestamp}`, { cache: 'no-store' });
         if (res.ok) {
           const contentType = res.headers.get('content-type') || '';
           if (contentType.includes('application/json')) {
             const data = await res.json();
             if (data && data.hasData && Array.isArray(data.teachers) && data.teachers.length > 0) {
+              const currentSaved = localStorage.getItem('ure_sul3_saved_at');
+              if (!currentSaved || !data.savedAt || new Date(data.savedAt).getTime() >= new Date(currentSaved).getTime()) {
+                setTeachers(data.teachers);
+                if (data.lastUpdated && data.lastUpdated !== '--/--/----') {
+                  setLastUpdated(data.lastUpdated);
+                  localStorage.setItem(CACHE_KEY_UPDATED, data.lastUpdated);
+                }
+                if (data.savedAt) {
+                  setSavedAt(data.savedAt);
+                  localStorage.setItem('ure_sul3_saved_at', data.savedAt);
+                }
+                if (data.onlineUrl) {
+                  setOnlineUrl(data.onlineUrl);
+                  localStorage.setItem('ure_sul3_sheet_url', data.onlineUrl);
+                }
+                localStorage.setItem(CACHE_KEY_TEACHERS, JSON.stringify(data.teachers));
+                return;
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore and fallback
+      }
+
+      // 2. Try static /database.json with cache busting
+      try {
+        const res = await fetch(`/database.json?_t=${timestamp}`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.teachers) && data.teachers.length > 0) {
+            const currentSaved = localStorage.getItem('ure_sul3_saved_at');
+            if (!currentSaved || !data.savedAt || new Date(data.savedAt).getTime() >= new Date(currentSaved).getTime()) {
               setTeachers(data.teachers);
               if (data.lastUpdated && data.lastUpdated !== '--/--/----') {
                 setLastUpdated(data.lastUpdated);
@@ -358,34 +425,7 @@ export default function App() {
                 localStorage.setItem('ure_sul3_sheet_url', data.onlineUrl);
               }
               localStorage.setItem(CACHE_KEY_TEACHERS, JSON.stringify(data.teachers));
-              return;
             }
-          }
-        }
-      } catch {
-        // ignore and fallback
-      }
-
-      // 2. Try static /database.json (Vercel CDN static asset) if teachers not yet loaded
-      try {
-        const res = await fetch('/database.json');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && Array.isArray(data.teachers) && data.teachers.length > 0) {
-            setTeachers(data.teachers);
-            if (data.lastUpdated && data.lastUpdated !== '--/--/----') {
-              setLastUpdated(data.lastUpdated);
-              localStorage.setItem(CACHE_KEY_UPDATED, data.lastUpdated);
-            }
-            if (data.savedAt) {
-              setSavedAt(data.savedAt);
-              localStorage.setItem('ure_sul3_saved_at', data.savedAt);
-            }
-            if (data.onlineUrl) {
-              setOnlineUrl(data.onlineUrl);
-              localStorage.setItem('ure_sul3_sheet_url', data.onlineUrl);
-            }
-            localStorage.setItem(CACHE_KEY_TEACHERS, JSON.stringify(data.teachers));
           }
         }
       } catch {
@@ -397,14 +437,63 @@ export default function App() {
   }, []);
 
   const handleManualRefresh = async () => {
-    if (onlineUrl) {
-      await fetchDataFromSheet(onlineUrl, false);
-    } else {
-      setIsRefreshing(true);
-      setTimeout(() => {
-        setIsRefreshing(false);
-        setLastUpdated(formatDateTimeBR(new Date()));
-      }, 500);
+    setIsRefreshing(true);
+    setError(null);
+    try {
+      if (onlineUrl) {
+        await fetchDataFromSheet(onlineUrl, false);
+      } else {
+        // Fetch freshly from /api/app-data or /database.json with cache-busting
+        const timestamp = Date.now();
+        let updated = false;
+        try {
+          const res = await fetch(`/api/app-data?_t=${timestamp}`, { cache: 'no-store' });
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.hasData && Array.isArray(data.teachers) && data.teachers.length > 0) {
+              setTeachers(data.teachers);
+              if (data.lastUpdated) {
+                setLastUpdated(data.lastUpdated);
+                localStorage.setItem(CACHE_KEY_UPDATED, data.lastUpdated);
+              }
+              if (data.savedAt) {
+                setSavedAt(data.savedAt);
+                localStorage.setItem('ure_sul3_saved_at', data.savedAt);
+              }
+              localStorage.setItem(CACHE_KEY_TEACHERS, JSON.stringify(data.teachers));
+              updated = true;
+            }
+          }
+        } catch {}
+
+        if (!updated) {
+          const res2 = await fetch(`/database.json?_t=${timestamp}`, { cache: 'no-store' });
+          if (res2.ok) {
+            const data2 = await res2.json();
+            if (data2 && Array.isArray(data2.teachers) && data2.teachers.length > 0) {
+              setTeachers(data2.teachers);
+              if (data2.lastUpdated) {
+                setLastUpdated(data2.lastUpdated);
+                localStorage.setItem(CACHE_KEY_UPDATED, data2.lastUpdated);
+              }
+              if (data2.savedAt) {
+                setSavedAt(data2.savedAt);
+                localStorage.setItem('ure_sul3_saved_at', data2.savedAt);
+              }
+              localStorage.setItem(CACHE_KEY_TEACHERS, JSON.stringify(data2.teachers));
+              updated = true;
+            }
+          }
+        }
+
+        if (!updated) {
+          setLastUpdated(formatDateTimeBR(new Date()));
+        }
+      }
+    } catch (err: any) {
+      console.error('Erro ao atualizar dados:', err);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -566,62 +655,20 @@ export default function App() {
     return calculateStats(baseFilteredTeachers, selectedAreas, selectedComponents, viewMode);
   }, [baseFilteredTeachers, selectedAreas, selectedComponents, viewMode]);
 
-  // Dynamic counts across all 3 view modes for the current dataset / filters
+  // Dynamic counts across all 3 view modes strictly matching calculateStats
   const modeCounts = useMemo(() => {
-    // Mode 1: Docentes únicos (Público-Alvo)
-    const teacherMap = new Map<string, boolean>();
-    baseFilteredTeachers.forEach((t) => {
-      const docKey = normalizeKey(t.nome);
-      const isFormado = t.isConsolidatedFormado || t.components.some((c) => c.concluidas >= 1 || c.concluido);
-      if (!teacherMap.has(docKey)) {
-        teacherMap.set(docKey, isFormado);
-      } else if (isFormado) {
-        teacherMap.set(docKey, true);
-      }
-    });
-
-    const docentesUnicos = teacherMap.size;
-    let docentesFormados = 0;
-    teacherMap.forEach((f) => {
-      if (f) docentesFormados += 1;
-    });
-
-    // Mode 2: Docentes por Área
-    const areaMap = new Map<string, boolean>();
-    baseFilteredTeachers.forEach((t) => {
-      const docKey = normalizeKey(t.nome);
-      t.components.forEach((c) => {
-        const areaKey = `${docKey}____${normalizeKey(c.area || 'GERAL')}`;
-        const isFormado = c.concluidas >= 1 || c.concluido;
-        if (!areaMap.has(areaKey)) {
-          areaMap.set(areaKey, isFormado);
-        } else if (isFormado) {
-          areaMap.set(areaKey, true);
-        }
-      });
-    });
-    const docentesArea = areaMap.size;
-
-    // Mode 3: Formações Previstas
-    let formacoes = 0;
-    let formacoesConcluidas = 0;
-    baseFilteredTeachers.forEach((t) => {
-      t.components.forEach((c) => {
-        formacoes += (c.previstas || 1);
-        if (c.concluidas >= 1 || c.concluido) {
-          formacoesConcluidas += (c.concluidas || 1);
-        }
-      });
-    });
+    const summaryDocentes = calculateStats(baseFilteredTeachers, selectedAreas, selectedComponents, 'docentes');
+    const summaryArea = calculateStats(baseFilteredTeachers, selectedAreas, selectedComponents, 'docentes_area');
+    const summaryFormacoes = calculateStats(baseFilteredTeachers, selectedAreas, selectedComponents, 'formacoes');
 
     return {
-      docentesUnicos,
-      docentesArea,
-      formacoes,
-      docentesFormados,
-      formacoesConcluidas,
+      docentesUnicos: summaryDocentes.previstas,
+      docentesArea: summaryArea.previstas,
+      formacoes: summaryFormacoes.previstas,
+      docentesFormados: summaryDocentes.formados,
+      formacoesConcluidas: summaryFormacoes.formados,
     };
-  }, [baseFilteredTeachers]);
+  }, [baseFilteredTeachers, selectedAreas, selectedComponents]);
 
   // Teachers displayed in table, taking into account the active statusFilter from the cards
   const displayedTeachers = useMemo(() => {

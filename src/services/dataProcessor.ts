@@ -506,12 +506,11 @@ export function processSpreadsheetData(data: GoogleSheetAppsScriptResponse): Tea
 }
 
 /**
- * Calculates summary metrics adhering strictly to the primary database:
- * 1. "A coluna previstas deve representar exatamente a soma da coluna E 'Formações previstas'."
- * 2. As formações concluídas representam a soma exata da coluna F 'Formações concluídas'.
+ * Calculates summary metrics dynamically adhering strictly to the loaded spreadsheet data:
+ * 1. "A coluna previstas deve representar a soma da coluna E 'Formações previstas' no modo formações, ou docentes únicos no modo docentes."
+ * 2. As formações concluídas representam a soma exata da coluna F 'Formações concluídas' ou docentes com pelo menos 1 formação concluída.
  * 3. O filtro de escola, área e componente calcula as métricas com exatidão matemática sobre as linhas correspondentes:
- *    - No modo 'formacoes': Total geral de 2.610 previstas e 628 concluídas (Adelaide: 40/13; Alberto Salotti: 50/8)
- *    - No modo 'docentes': Total geral de 1.811 docentes únicos e 544 formados (1.267 não formados)
+ *    - Atualizado em tempo real sempre que a planilha for sincronizada ou importada via arquivo.
  */
 export function calculateStats(
   teachers: TeacherRecord[],
