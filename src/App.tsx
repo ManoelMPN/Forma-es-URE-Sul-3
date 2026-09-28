@@ -445,15 +445,28 @@ export default function App() {
     localStorage.setItem('ure_sul3_autosync', String(enabled));
   };
 
-  // Distinct schools strictly from actual loaded teachers data
+  // Distinct schools strictly from actual loaded teachers data:
+  // 104 regular schools (A-Z) + o campo NÃO LOCALIZADO
   const availableSchools = useMemo(() => {
     const schoolSet = new Set<string>();
     teachers.forEach((t) => {
-      if (t.escola && t.escola.trim()) {
-        schoolSet.add(t.escola.trim());
+      const esc = (t.escola || '').trim();
+      if (esc) {
+        if (normalizeKey(esc).includes('NAO LOCALIZAD')) {
+          schoolSet.add('NÃO LOCALIZADO');
+        } else {
+          schoolSet.add(esc);
+        }
       }
     });
-    return Array.from(schoolSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const list = Array.from(schoolSet);
+    const regularSchools = list
+      .filter((s) => s !== 'NÃO LOCALIZADO')
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    if (list.includes('NÃO LOCALIZADO')) {
+      return [...regularSchools, 'NÃO LOCALIZADO'];
+    }
+    return regularSchools;
   }, [teachers]);
 
   // Distinct areas strictly from actual loaded teachers data
@@ -503,9 +516,18 @@ export default function App() {
     const normComponents = selectedComponents.map(normalizeKey);
 
     return teachers.filter((t) => {
-      // Filter by School
-      if (normSchools.length > 0 && !normSchools.includes(normalizeKey(t.escola))) {
-        return false;
+      // Filter by School (supports 104 schools + NÃO LOCALIZADO)
+      if (normSchools.length > 0) {
+        const teacherSchoolNorm = normalizeKey(t.escola);
+        const matchesSchool = normSchools.some((ns) => {
+          if (ns.includes('NAO LOCALIZAD') && teacherSchoolNorm.includes('NAO LOCALIZAD')) {
+            return true;
+          }
+          return teacherSchoolNorm === ns;
+        });
+        if (!matchesSchool) {
+          return false;
+        }
       }
 
       // Filter by Area
@@ -543,6 +565,63 @@ export default function App() {
   const summaryStats: SummaryStats = useMemo(() => {
     return calculateStats(baseFilteredTeachers, selectedAreas, selectedComponents, viewMode);
   }, [baseFilteredTeachers, selectedAreas, selectedComponents, viewMode]);
+
+  // Dynamic counts across all 3 view modes for the current dataset / filters
+  const modeCounts = useMemo(() => {
+    // Mode 1: Docentes únicos (Público-Alvo)
+    const teacherMap = new Map<string, boolean>();
+    baseFilteredTeachers.forEach((t) => {
+      const docKey = normalizeKey(t.nome);
+      const isFormado = t.isConsolidatedFormado || t.components.some((c) => c.concluidas >= 1 || c.concluido);
+      if (!teacherMap.has(docKey)) {
+        teacherMap.set(docKey, isFormado);
+      } else if (isFormado) {
+        teacherMap.set(docKey, true);
+      }
+    });
+
+    const docentesUnicos = teacherMap.size;
+    let docentesFormados = 0;
+    teacherMap.forEach((f) => {
+      if (f) docentesFormados += 1;
+    });
+
+    // Mode 2: Docentes por Área
+    const areaMap = new Map<string, boolean>();
+    baseFilteredTeachers.forEach((t) => {
+      const docKey = normalizeKey(t.nome);
+      t.components.forEach((c) => {
+        const areaKey = `${docKey}____${normalizeKey(c.area || 'GERAL')}`;
+        const isFormado = c.concluidas >= 1 || c.concluido;
+        if (!areaMap.has(areaKey)) {
+          areaMap.set(areaKey, isFormado);
+        } else if (isFormado) {
+          areaMap.set(areaKey, true);
+        }
+      });
+    });
+    const docentesArea = areaMap.size;
+
+    // Mode 3: Formações Previstas
+    let formacoes = 0;
+    let formacoesConcluidas = 0;
+    baseFilteredTeachers.forEach((t) => {
+      t.components.forEach((c) => {
+        formacoes += (c.previstas || 1);
+        if (c.concluidas >= 1 || c.concluido) {
+          formacoesConcluidas += (c.concluidas || 1);
+        }
+      });
+    });
+
+    return {
+      docentesUnicos,
+      docentesArea,
+      formacoes,
+      docentesFormados,
+      formacoesConcluidas,
+    };
+  }, [baseFilteredTeachers]);
 
   // Teachers displayed in table, taking into account the active statusFilter from the cards
   const displayedTeachers = useMemo(() => {
@@ -693,6 +772,7 @@ export default function App() {
           isDarkMode={isDarkMode}
           statusFilter={statusFilter}
           onStatusFilterChange={handleStatusFilterChange}
+          modeCounts={modeCounts}
         />
 
         {/* Relação de Docentes Table Section matching Photo 2 */}
@@ -726,6 +806,8 @@ export default function App() {
         autoSyncEnabled={autoSyncEnabled}
         onToggleAutoSync={handleToggleAutoSync}
         isDarkMode={isDarkMode}
+        totalTeachersCount={teachers.length}
+        teachers={teachers}
       />
 
       {/* Admin Password Modal (Password: 343950) */}

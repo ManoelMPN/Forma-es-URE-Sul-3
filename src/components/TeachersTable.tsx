@@ -55,6 +55,10 @@ export const TeachersTable: React.FC<TeachersTableProps> = ({
     const list = [...teachers];
     return list.sort((a, b) => {
       if (sortBy === 'escola') {
+        const isANao = a.escola === 'NÃO LOCALIZADO';
+        const isBNao = b.escola === 'NÃO LOCALIZADO';
+        if (isANao && !isBNao) return 1;
+        if (!isANao && isBNao) return -1;
         const cmpEscola = a.escola.localeCompare(b.escola, 'pt-BR');
         if (cmpEscola !== 0) return cmpEscola;
         return a.nome.localeCompare(b.nome, 'pt-BR');
@@ -411,7 +415,13 @@ export const TeachersTable: React.FC<TeachersTableProps> = ({
                       <td className="py-3.5 px-6 align-top">
                         <span
                           className={`font-bold uppercase text-xs md:text-sm leading-snug block transition-colors ${
-                            isDarkMode ? 'text-blue-300' : 'text-[#12285a]'
+                            teacher.escola === 'NÃO LOCALIZADO'
+                              ? isDarkMode
+                                ? 'text-amber-400 font-extrabold'
+                                : 'text-amber-700 font-extrabold'
+                              : isDarkMode
+                              ? 'text-blue-300'
+                              : 'text-[#12285a]'
                           }`}
                         >
                           {teacher.escola}

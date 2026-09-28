@@ -113,6 +113,19 @@ app.get('/api/app-data', (_req: Request, res: Response) => {
 });
 
 /**
+ * Public endpoint to download database.json for uploading to GitHub or Vercel
+ */
+app.get('/api/download-database', (_req: Request, res: Response) => {
+  const data = readStoredData();
+  if (data) {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="database.json"');
+    return res.send(JSON.stringify(data, null, 2));
+  }
+  return res.status(404).json({ error: 'database.json não encontrado no servidor.' });
+});
+
+/**
  * Verify admin password (343950).
  */
 app.post('/api/verify-admin', (req: Request, res: Response) => {

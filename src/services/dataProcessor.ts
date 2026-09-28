@@ -369,8 +369,16 @@ export function processSpreadsheetData(data: GoogleSheetAppsScriptResponse): Tea
 
       const normDocKey = normalizeKey(docName);
       const lookup = schoolLookupMap.get(normDocKey);
-      const effectiveSchool = (rowSchool || (lookup ? lookup.escola : '')).toUpperCase().trim();
-      const normSchoolKey = normalizeKey(effectiveSchool);
+
+      let rawEffectiveSchool = (rowSchool || (lookup ? lookup.escola : '')).toUpperCase().trim();
+      if (!rawEffectiveSchool || normalizeKey(rawEffectiveSchool).includes('NAO LOCALIZAD')) {
+        rawEffectiveSchool = 'NÃO LOCALIZADO';
+      }
+
+      // If multiple schools were concatenated with | or / or ;
+      const schoolList = rawEffectiveSchool.includes('|')
+        ? rawEffectiveSchool.split('|').map((s) => s.trim()).filter(Boolean)
+        : [rawEffectiveSchool];
 
       const rawCompName = (rowComponent || sheetName).trim();
       const componentName = rawCompName.toUpperCase();
@@ -384,18 +392,26 @@ export function processSpreadsheetData(data: GoogleSheetAppsScriptResponse): Tea
       const concluidas = getRowConcluidas(row);
       const isConcluido = concluidas >= 1 || isRowCompleted(row);
 
-      rawItems.push({
-        docName: (lookup ? lookup.nome : docName).toUpperCase().trim(),
-        normDocKey,
-        schoolName: effectiveSchool,
-        normSchoolKey,
-        componentName,
-        normCompKey,
-        area,
-        normAreaKey,
-        previstas,
-        isConcluido,
-        concluidas,
+      schoolList.forEach((effectiveSchool) => {
+        let finalSchool = effectiveSchool.toUpperCase().trim();
+        if (!finalSchool || normalizeKey(finalSchool).includes('NAO LOCALIZAD')) {
+          finalSchool = 'NÃO LOCALIZADO';
+        }
+        const normSchoolKey = normalizeKey(finalSchool);
+
+        rawItems.push({
+          docName: (lookup ? lookup.nome : docName).toUpperCase().trim(),
+          normDocKey,
+          schoolName: finalSchool,
+          normSchoolKey,
+          componentName,
+          normCompKey,
+          area,
+          normAreaKey,
+          previstas,
+          isConcluido,
+          concluidas,
+        });
       });
     });
   }
@@ -477,8 +493,12 @@ export function processSpreadsheetData(data: GoogleSheetAppsScriptResponse): Tea
     });
   });
 
-  // Sort primarily by ESCOLA (A-Z) and secondarily by PROFESSOR (A-Z)
+  // Sort primarily by ESCOLA (104 regular schools A-Z, then NÃO LOCALIZADO) and secondarily by PROFESSOR (A-Z)
   return result.sort((a, b) => {
+    const isANao = a.escola === 'NÃO LOCALIZADO';
+    const isBNao = b.escola === 'NÃO LOCALIZADO';
+    if (isANao && !isBNao) return 1;
+    if (!isANao && isBNao) return -1;
     const cmpEscola = a.escola.localeCompare(b.escola, 'pt-BR');
     if (cmpEscola !== 0) return cmpEscola;
     return a.nome.localeCompare(b.nome, 'pt-BR');

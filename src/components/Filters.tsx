@@ -64,7 +64,7 @@ export const Filters: React.FC<FiltersProps> = ({
               Filtros de Consulta Múltipla
             </h3>
             <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-              Selecione uma ou mais escolas, áreas de conhecimento e componentes curriculares
+              Selecione uma ou mais escolas (104 escolas + campo não localizado), áreas de conhecimento e componentes curriculares
             </p>
           </div>
         </div>

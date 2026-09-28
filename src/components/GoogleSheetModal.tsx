@@ -11,7 +11,11 @@ import {
   Clock,
   Upload,
   FileSpreadsheet,
-  HelpCircle
+  HelpCircle,
+  Download,
+  Rocket,
+  Check,
+  Info,
 } from 'lucide-react';
 
 interface GoogleSheetModalProps {
@@ -28,6 +32,8 @@ interface GoogleSheetModalProps {
   autoSyncEnabled: boolean;
   onToggleAutoSync: (enabled: boolean) => void;
   isDarkMode?: boolean;
+  totalTeachersCount?: number;
+  teachers?: any[];
 }
 
 const APPS_SCRIPT_CODE = `/**
@@ -115,17 +121,60 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
   autoSyncEnabled,
   onToggleAutoSync,
   isDarkMode = false,
+  totalTeachersCount = 0,
+  teachers = [],
 }) => {
   const [inputUrl, setInputUrl] = useState(onlineUrl);
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [gitCopied, setGitCopied] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState<'url' | 'file'>('url');
+  const [activeTab, setActiveTab] = useState<'url' | 'file' | 'vercel'>('url');
   const [isDragging, setIsDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
+
+  const handleDownloadDatabase = () => {
+    try {
+      if (teachers && teachers.length > 0) {
+        const payload = {
+          teachers,
+          lastUpdated: lastUpdated || new Date().toLocaleString('pt-BR'),
+          onlineUrl,
+          autoSyncEnabled: false,
+          savedAt: new Date().toISOString(),
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'database.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        const a = document.createElement('a');
+        a.href = '/api/download-database';
+        a.download = 'database.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      console.error('Erro ao baixar database.json:', err);
+      window.open('/database.json', '_blank');
+    }
+  };
+
+  const handleCopyGitCommands = () => {
+    const commands = `git add public/database.json src/data/database.json\ngit commit -m "chore: atualizar dados de formação URE Sul 3"\ngit push origin main`;
+    navigator.clipboard.writeText(commands);
+    setGitCopied(true);
+    setTimeout(() => setGitCopied(false), 2000);
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -221,9 +270,7 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
           >
             <Clock className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
             <div>
-              <strong>Regra de Atualização:</strong> O aplicativo não conecta em tempo real continuamente.
-              Sempre que você atualizar aqui (por link ou enviando a planilha), os dados são gravados no próprio
-              aplicativo e comitados no Git, ficando permanentemente salvos e disponíveis para todos os usuários.
+              <strong>Sincronização e Publicação:</strong> Ao salvar aqui (por link ou enviando a planilha), os dados são gravados localmente em <code>database.json</code>. Para atualizar o site público no <strong>Vercel</strong> para todos os visitantes, acesse a aba <strong>"Publicar no Git & Vercel"</strong> e envie o arquivo para o seu GitHub.
             </div>
           </div>
 
@@ -239,22 +286,43 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
               </p>
               <p className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-[#0a1b3f]'}`}>
                 {lastUpdated}
+                {totalTeachersCount > 0 && (
+                  <span className="ml-2 font-normal text-xs opacity-80">
+                    ({totalTeachersCount.toLocaleString('pt-BR')} docentes)
+                  </span>
+                )}
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={onRefreshNow}
-              disabled={isLoading}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-semibold text-xs transition cursor-pointer disabled:opacity-50 border ${
-                isDarkMode
-                  ? 'bg-blue-900/60 text-blue-200 border-blue-600 hover:bg-blue-800'
-                  : 'bg-blue-100 text-blue-900 border-blue-300 hover:bg-blue-200'
-              }`}
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>{isLoading ? 'Sincronizando...' : 'Atualizar Dados Agora'}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadDatabase}
+                title="Baixar arquivo database.json para subir no GitHub ou Vercel"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs transition cursor-pointer border ${
+                  isDarkMode
+                    ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700 hover:bg-emerald-900/50'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                }`}
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Baixar database.json</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onRefreshNow}
+                disabled={isLoading}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-semibold text-xs transition cursor-pointer disabled:opacity-50 border ${
+                  isDarkMode
+                    ? 'bg-blue-900/60 text-blue-200 border-blue-600 hover:bg-blue-800'
+                    : 'bg-blue-100 text-blue-900 border-blue-300 hover:bg-blue-200'
+                }`}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                <span>{isLoading ? 'Sincronizando...' : 'Atualizar Dados Agora'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Error notice if any */}
@@ -280,23 +348,33 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
           {/* Success notice */}
           {saveSuccess && (
             <div
-              className={`p-3.5 border rounded-xl text-xs flex items-center gap-2 ${
+              className={`p-3.5 border rounded-xl text-xs flex items-center justify-between gap-2 flex-wrap ${
                 isDarkMode
                   ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300'
                   : 'bg-emerald-50 border-emerald-200 text-emerald-800'
               }`}
             >
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-              <span>{uploadStatus || 'Conexão salva e sincronizada com sucesso!'}</span>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>{uploadStatus || 'Conexão salva e dados gravados localmente!'}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('vercel')}
+                className="font-bold text-xs underline cursor-pointer hover:opacity-80 flex items-center gap-1"
+              >
+                <Rocket className="w-3.5 h-3.5" />
+                <span>Publicar no Git & Vercel ➔</span>
+              </button>
             </div>
           )}
 
-          {/* Mode Tabs: URL vs Upload Arquivo */}
-          <div className={`flex border-b ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+          {/* Mode Tabs: URL vs Upload Arquivo vs Publicar no Git & Vercel */}
+          <div className={`flex border-b overflow-x-auto ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
             <button
               type="button"
               onClick={() => setActiveTab('url')}
-              className={`flex items-center gap-2 py-2.5 px-4 font-bold text-xs border-b-2 transition cursor-pointer ${
+              className={`flex items-center gap-1.5 py-2.5 px-3.5 font-bold text-xs border-b-2 whitespace-nowrap transition cursor-pointer ${
                 activeTab === 'url'
                   ? isDarkMode
                     ? 'border-blue-400 text-blue-400'
@@ -307,12 +385,12 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
               }`}
             >
               <Link className="w-4 h-4" />
-              <span>Link Online (Google Sheets / Apps Script)</span>
+              <span>Link Online (Sheets / Script)</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('file')}
-              className={`flex items-center gap-2 py-2.5 px-4 font-bold text-xs border-b-2 transition cursor-pointer ${
+              className={`flex items-center gap-1.5 py-2.5 px-3.5 font-bold text-xs border-b-2 whitespace-nowrap transition cursor-pointer ${
                 activeTab === 'file'
                   ? isDarkMode
                     ? 'border-blue-400 text-blue-400'
@@ -324,6 +402,25 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>Enviar Arquivo (.xlsx / .csv)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('vercel')}
+              className={`flex items-center gap-1.5 py-2.5 px-3.5 font-bold text-xs border-b-2 whitespace-nowrap transition cursor-pointer ${
+                activeTab === 'vercel'
+                  ? isDarkMode
+                    ? 'border-emerald-400 text-emerald-400'
+                    : 'border-emerald-600 text-emerald-700'
+                  : isDarkMode
+                  ? 'border-transparent text-slate-400 hover:text-slate-200'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Rocket className="w-4 h-4 text-emerald-500" />
+              <span>Publicar no Git & Vercel</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-extrabold">
+                Guia
+              </span>
             </button>
           </div>
 
@@ -377,7 +474,7 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
                   disabled={isLoading}
                   className="bg-[#16337a] hover:bg-[#0f2457] text-white font-bold text-xs py-2.5 px-5 rounded-xl transition cursor-pointer shadow-xs disabled:opacity-50"
                 >
-                  {isLoading ? 'Conectando e Gravando...' : 'Salvar e Atualizar Base (Git Commit)'}
+                  {isLoading ? 'Conectando e Gravando...' : 'Salvar Dados no Servidor Local'}
                 </button>
 
                 <div className="flex items-center gap-3">
@@ -394,18 +491,18 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
                 </div>
               </div>
 
-              {/* Persistence Notice replacing auto-sync */}
+              {/* Persistence Notice */}
               <div className={`pt-3 border-t text-xs ${isDarkMode ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-600'}`}>
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="font-semibold">Persistência Estável no Próprio App</span>
+                  <span className="font-semibold">Persistência Estável em /database.json</span>
                 </div>
                 <p className="mt-1 text-[11px] leading-relaxed">
-                  Os dados são salvos internamente e confirmados no Git. Não há requisições em tempo real periódicas consumindo recursos dos usuários.
+                  Os dados salvos aqui ficam gravados em <code>/database.json</code>. Para que os visitantes do <strong>Vercel</strong> vejam a versão mais recente, acesse a aba <strong>"Publicar no Git & Vercel"</strong> acima.
                 </p>
               </div>
             </form>
-          ) : (
+          ) : activeTab === 'file' ? (
             /* Tab 2: File Upload (Drag and Drop / File Input) */
             <div className="space-y-4">
               <div
@@ -466,50 +563,200 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
                 <strong>Estrutura da planilha:</strong> Apenas 1 aba contendo <strong>Escola</strong>, <strong>Docente</strong>, <strong>Área</strong>, <strong>Componente</strong>, <strong>Formações Previstas</strong> e <strong>Formações Concluídas</strong>. Se tiver 1 está concluída; se estiver em branco, ainda não.
               </div>
             </div>
+          ) : (
+            /* Tab 3: Git & Vercel Publishing Guide */
+            <div className="space-y-4 animate-in fade-in duration-200">
+              {/* Clarification Alert */}
+              <div
+                className={`p-4 rounded-xl border text-xs leading-relaxed ${
+                  isDarkMode
+                    ? 'bg-blue-950/40 border-blue-800/80 text-blue-200'
+                    : 'bg-blue-50 border-blue-200 text-blue-950'
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-bold text-sm mb-1">
+                      Por que o commit não aparece sozinho no Git e Vercel?
+                    </h4>
+                    <p className="leading-relaxed">
+                      Ao salvar ou carregar uma planilha, o arquivo <code>database.json</code> é atualizado com sucesso no servidor do aplicativo. No entanto, por restrições de segurança da web, nenhum sistema web pode enviar arquivos (<code>git push</code>) diretamente para sua conta pessoal do GitHub sem suas credenciais privadas.
+                    </p>
+                    <p className="mt-1.5 font-medium">
+                      O <strong>Vercel monitora o seu repositório no GitHub</strong>: para que o Vercel publique a nova versão para todos os visitantes, basta enviar o <code>database.json</code> atualizado para o seu GitHub usando uma das 2 opções abaixo.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Box: Download Database */}
+              <div
+                className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors ${
+                  isDarkMode ? 'bg-[#152038] border-slate-700' : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <h4 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                      Passo 1: Baixar a Base Atualizada
+                    </h4>
+                  </div>
+                  <p className={`text-xs mt-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                    Arquivo <code>database.json</code> pronto com {totalTeachersCount.toLocaleString('pt-BR')} docentes consolidados (~1.4 MB).
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadDatabase}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 px-5 rounded-xl transition cursor-pointer shadow-md inline-flex items-center gap-2 shrink-0 active:scale-95"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Baixar database.json</span>
+                </button>
+              </div>
+
+              {/* Method 1: GitHub Web (Recommended - No Terminal) */}
+              <div
+                className={`p-4 rounded-xl border space-y-3 ${
+                  isDarkMode ? 'bg-[#17223b] border-slate-700' : 'bg-white border-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-blue-500 text-white">
+                    OPÇÃO 1
+                  </span>
+                  <h4 className={`font-bold text-xs ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                    Pelo Navegador no GitHub (Mais Fácil • 30 Segundos • Sem Terminal)
+                  </h4>
+                </div>
+                <ol className={`text-xs space-y-2 list-decimal list-inside leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                  <li>
+                    Clique no botão verde acima para baixar o <strong>database.json</strong>.
+                  </li>
+                  <li>
+                    Abra o seu repositório no <strong>GitHub</strong> no navegador (onde está conectado ao Vercel).
+                  </li>
+                  <li>
+                    Abra a pasta <strong>public/</strong> (ou <strong>src/data/</strong>).
+                  </li>
+                  <li>
+                    No canto superior direito, clique em <strong>Add file</strong> ➔ <strong>Upload files</strong>.
+                  </li>
+                  <li>
+                    Arraste o arquivo <strong>database.json</strong> baixado e clique no botão verde <strong>Commit changes</strong>.
+                  </li>
+                  <li>
+                    <strong>Pronto!</strong> O Vercel detectará o commit automaticamente e fará o deploy em ~30 segundos, exibindo os novos dados para todos os visitantes.
+                  </li>
+                </ol>
+              </div>
+
+              {/* Method 2: Git Terminal */}
+              <div
+                className={`p-4 rounded-xl border space-y-3 ${
+                  isDarkMode ? 'bg-[#17223b] border-slate-700' : 'bg-white border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-600 text-white">
+                      OPÇÃO 2
+                    </span>
+                    <h4 className={`font-bold text-xs ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                      Pelo Terminal Git (se o projeto está clonado no seu PC)
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyGitCommands}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 cursor-pointer"
+                  >
+                    {gitCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400 font-bold">Copiado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copiar Comandos</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <pre className="bg-[#091021] text-emerald-300 p-3.5 rounded-xl text-[11px] font-mono leading-relaxed border border-slate-800 overflow-x-auto">
+{`git add public/database.json src/data/database.json
+git commit -m "chore: atualizar dados de formação URE Sul 3"
+git push origin main`}
+                </pre>
+                <p className={`text-[11px] leading-relaxed ${isDarkMode ? 'text-amber-400/90' : 'text-amber-800'}`}>
+                  ⚠️ <strong>Atenção:</strong> O comando <code>git push origin main</code> é o passo obrigatório que envia as alterações do seu computador para o GitHub/Vercel.
+                </p>
+              </div>
+            </div>
           )}
 
           {/* Instructions and Apps Script Code Accordion */}
-          <div className={`pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-            <button
-              type="button"
-              onClick={() => setShowCode(!showCode)}
-              className={`text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-[#16337a] hover:text-[#0f2457]'
-              }`}
-            >
-              <span>{showCode ? 'Ocultar instruções do Google Apps Script' : 'Ver instruções e código do Google Apps Script'}</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
+          {activeTab !== 'vercel' && (
+            <div className={`pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+              <button
+                type="button"
+                onClick={() => setShowCode(!showCode)}
+                className={`text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-[#16337a] hover:text-[#0f2457]'
+                }`}
+              >
+                <span>{showCode ? 'Ocultar instruções do Google Apps Script' : 'Ver instruções e código do Google Apps Script'}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
 
-            {showCode && (
-              <div className="mt-3 space-y-2 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between">
-                  <span className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                    Código.gs
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleCopyCode}
-                    className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 font-semibold cursor-pointer"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>{copied ? 'Copiado!' : 'Copiar Código'}</span>
-                  </button>
+              {showCode && (
+                <div className="mt-3 space-y-2 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                      Código.gs
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyCode}
+                      className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 font-semibold cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>{copied ? 'Copiado!' : 'Copiar Código'}</span>
+                    </button>
+                  </div>
+                  <pre className="bg-[#091021] text-slate-200 p-3.5 rounded-xl text-[11px] font-mono overflow-x-auto max-h-56 leading-relaxed border border-slate-800">
+                    {APPS_SCRIPT_CODE}
+                  </pre>
                 </div>
-                <pre className="bg-[#091021] text-slate-200 p-3.5 rounded-xl text-[11px] font-mono overflow-x-auto max-h-56 leading-relaxed border border-slate-800">
-                  {APPS_SCRIPT_CODE}
-                </pre>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Modal Footer */}
         <div
-          className={`border-t px-6 py-3 flex justify-end transition-colors ${
+          className={`border-t px-6 py-3 flex items-center justify-between transition-colors ${
             isDarkMode ? 'bg-[#091021] border-slate-800' : 'bg-slate-50 border-slate-200'
           }`}
         >
+          <button
+            type="button"
+            onClick={handleDownloadDatabase}
+            className={`font-semibold text-xs py-1.5 px-3 rounded-lg border transition inline-flex items-center gap-1.5 cursor-pointer ${
+              isDarkMode
+                ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            }`}
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Baixar database.json</span>
+          </button>
+
           <button
             type="button"
             onClick={onClose}

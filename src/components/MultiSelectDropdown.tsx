@@ -250,7 +250,18 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                       {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                     </div>
 
-                    <span className="truncate">{option}</span>
+                    <span className="truncate flex-1">{option}</span>
+                    {option === 'NÃO LOCALIZADO' && (
+                      <span
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0 ${
+                          isDarkMode
+                            ? 'bg-amber-950/60 text-amber-300 border border-amber-800/60'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}
+                      >
+                        Campo Especial
+                      </span>
+                    )}
                   </div>
                 );
               })

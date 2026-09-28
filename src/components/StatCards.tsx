@@ -2,6 +2,14 @@ import React from 'react';
 import { Users, Check, X, GraduationCap, UserCheck } from 'lucide-react';
 import { SummaryStats, ViewMode, StatusFilter } from '../types';
 
+export interface ModeCounts {
+  docentesUnicos: number;
+  docentesArea: number;
+  formacoes: number;
+  docentesFormados?: number;
+  formacoesConcluidas?: number;
+}
+
 interface StatCardsProps {
   stats: SummaryStats;
   viewMode: ViewMode;
@@ -9,6 +17,7 @@ interface StatCardsProps {
   isDarkMode: boolean;
   statusFilter?: StatusFilter;
   onStatusFilterChange?: (filter: StatusFilter) => void;
+  modeCounts?: ModeCounts;
 }
 
 export const StatCards: React.FC<StatCardsProps> = ({
@@ -18,8 +27,9 @@ export const StatCards: React.FC<StatCardsProps> = ({
   isDarkMode,
   statusFilter = 'all',
   onStatusFilterChange,
+  modeCounts,
 }) => {
-  // Brazilian number format (1.811, 2.610, 628, etc.)
+  // Brazilian number format
   const formatPtBrNumber = (val: number): string => {
     return new Intl.NumberFormat('pt-BR').format(val);
   };
@@ -27,6 +37,16 @@ export const StatCards: React.FC<StatCardsProps> = ({
   const isDocentesUnicos = viewMode === 'docentes';
   const isDocentesArea = viewMode === 'docentes_area';
   const isFormacoes = viewMode === 'formacoes';
+
+  const totalUnicos = modeCounts?.docentesUnicos ?? stats.totalDocentes ?? stats.previstas;
+  const formadosUnicos = modeCounts?.docentesFormados ?? (isDocentesUnicos ? stats.formados : 0);
+  const pctFormadosUnicos = totalUnicos > 0 ? ((formadosUnicos / totalUnicos) * 100).toFixed(1).replace('.', ',') : '0,0';
+
+  const totalArea = modeCounts?.docentesArea ?? (isDocentesArea ? stats.previstas : totalUnicos);
+
+  const totalFormacoes = modeCounts?.formacoes ?? (isFormacoes ? stats.previstas : 0);
+  const concluidasFormacoes = modeCounts?.formacoesConcluidas ?? (isFormacoes ? stats.formados : 0);
+  const pctConcluidasFormacoes = totalFormacoes > 0 ? ((concluidasFormacoes / totalFormacoes) * 100).toFixed(1).replace('.', ',') : '0,0';
 
   const handleCardClick = (target: StatusFilter) => {
     if (!onStatusFilterChange) return;
@@ -98,18 +118,18 @@ export const StatCards: React.FC<StatCardsProps> = ({
                 }`}
               >
                 {isFormacoes
-                  ? 'Formações Previstas (Base: 2.610)'
+                  ? `Formações Previstas (Base: ${formatPtBrNumber(totalFormacoes)})`
                   : isDocentesArea
-                  ? 'Docentes por Área de Conhecimento'
-                  : 'Público-Alvo (Docentes Únicos: 1.811)'}
+                  ? `Docentes por Área (${formatPtBrNumber(totalArea)})`
+                  : `Público-Alvo (Docentes Únicos: ${formatPtBrNumber(totalUnicos)})`}
               </span>
             </h4>
             <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
               {isFormacoes
-                ? 'Soma total de formações atribuídas por componente (Coluna E: 2.610 Previstas | Coluna F: 628 Concluídas)'
+                ? `Soma total de formações atribuídas por componente (${formatPtBrNumber(totalFormacoes)} Previstas | ${formatPtBrNumber(concluidasFormacoes)} Concluídas)`
                 : isDocentesArea
-                ? 'Docentes que atuam em 2 ou mais áreas contam como pessoas distintas em cada área de atuação'
-                : 'Público-alvo real de professores físicos da rede URE Sul 3 (1.811 docentes únicos | 544 formados)'}
+                ? `Docentes que atuam em 2 ou mais áreas contam como pessoas distintas em cada área de atuação (${formatPtBrNumber(totalArea)} atribuições)`
+                : `Público-alvo real de professores físicos da rede URE Sul 3 (${formatPtBrNumber(totalUnicos)} docentes únicos | ${formatPtBrNumber(formadosUnicos)} formados)`}
             </p>
           </div>
         </div>
@@ -122,13 +142,13 @@ export const StatCards: React.FC<StatCardsProps> = ({
             isDarkMode ? 'bg-[#0d1424] border-slate-700' : 'bg-slate-100 border-slate-200'
           }`}
         >
-          {/* Option 1: Público-Alvo (Docentes Únicos - 1.811) */}
+          {/* Option 1: Público-Alvo (Docentes Únicos) */}
           <button
             type="button"
             role="radio"
             aria-checked={isDocentesUnicos}
             onClick={() => onViewModeChange('docentes')}
-            title="Público-alvo total de 1.811 professores físicos únicos"
+            title={`Público-alvo total de ${formatPtBrNumber(totalUnicos)} professores físicos únicos`}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               isDocentesUnicos
                 ? isDarkMode
@@ -140,7 +160,7 @@ export const StatCards: React.FC<StatCardsProps> = ({
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>Público-Alvo (1.811)</span>
+            <span>Público-Alvo ({formatPtBrNumber(totalUnicos)})</span>
           </button>
 
           {/* Option 2: Docentes por Área */}
@@ -149,7 +169,7 @@ export const StatCards: React.FC<StatCardsProps> = ({
             role="radio"
             aria-checked={isDocentesArea}
             onClick={() => onViewModeChange('docentes_area')}
-            title="Docentes considerados como pessoas distintas para cada área em que atuam"
+            title={`Docentes considerados como pessoas distintas para cada área em que atuam (${formatPtBrNumber(totalArea)})`}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               isDocentesArea
                 ? isDarkMode
@@ -164,13 +184,13 @@ export const StatCards: React.FC<StatCardsProps> = ({
             <span>Docentes por Área</span>
           </button>
 
-          {/* Option 3: Por Formações (2.610) */}
+          {/* Option 3: Por Formações */}
           <button
             type="button"
             role="radio"
             aria-checked={isFormacoes}
             onClick={() => onViewModeChange('formacoes')}
-            title="Soma de formações previstas em cada componente curricular (2.610)"
+            title={`Soma de formações previstas em cada componente curricular (${formatPtBrNumber(totalFormacoes)})`}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               isFormacoes
                 ? isDarkMode
@@ -182,7 +202,7 @@ export const StatCards: React.FC<StatCardsProps> = ({
             }`}
           >
             <GraduationCap className="w-3.5 h-3.5" />
-            <span>Por Formações (2.610)</span>
+            <span>Por Formações ({formatPtBrNumber(totalFormacoes)})</span>
           </button>
         </div>
       </div>
@@ -220,10 +240,10 @@ export const StatCards: React.FC<StatCardsProps> = ({
               </span>
               <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                 {isFormacoes
-                  ? 'Soma total da Coluna E (Base: 2.610)'
+                  ? 'Soma total de formações atribuídas'
                   : isDocentesArea
                   ? 'Docentes contabilizados por área de atuação'
-                  : 'Público-alvo de docentes únicos (Base: 1.811)'}
+                  : 'Público-alvo de docentes únicos'}
               </span>
             </div>
             <div
@@ -302,10 +322,10 @@ export const StatCards: React.FC<StatCardsProps> = ({
               </span>
               <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                 {isFormacoes
-                  ? 'Soma total da Coluna F (Base: 628)'
+                  ? 'Soma total de formações concluídas'
                   : isDocentesArea
                   ? 'Docentes formados na respectiva área pedagógica'
-                  : 'Docentes com formação realizada (Base: 544)'}
+                  : 'Docentes com formação realizada'}
               </span>
             </div>
             <div
@@ -397,10 +417,10 @@ export const StatCards: React.FC<StatCardsProps> = ({
               </span>
               <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                 {isFormacoes
-                  ? 'Previstas menos concluídas (Base: 1.982)'
+                  ? 'Previstas menos concluídas'
                   : isDocentesArea
                   ? 'Docentes sem conclusão na área pedagógica'
-                  : 'Docentes sem formação concluída (Base: 1.267)'}
+                  : 'Docentes sem formação concluída'}
               </span>
             </div>
             <div
@@ -481,23 +501,23 @@ export const StatCards: React.FC<StatCardsProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-0.5">
               <div>
                 <strong className={isDarkMode ? 'text-blue-300' : 'text-blue-900'}>
-                  1. Público-Alvo (1.811 docentes):
+                  1. Público-Alvo ({formatPtBrNumber(totalUnicos)} docentes):
                 </strong>{' '}
                 Total de pessoas físicas (professores únicos) na rede. Deles,{' '}
-                <strong>544</strong> (30,0%) já concluíram formação em pelo menos um componente.
+                <strong>{formatPtBrNumber(formadosUnicos)}</strong> ({pctFormadosUnicos}%) já concluíram formação em pelo menos um componente.
               </div>
               <div>
                 <strong className={isDarkMode ? 'text-purple-300' : 'text-purple-900'}>
-                  2. Docentes por Área:
+                  2. Docentes por Área ({formatPtBrNumber(totalArea)}):
                 </strong>{' '}
                 Professores em mais de uma área (ex: Matemática e Tecnologia) são avaliados em cada área de conhecimento em que atuam.
               </div>
               <div>
                 <strong className={isDarkMode ? 'text-emerald-300' : 'text-emerald-900'}>
-                  3. Formações Previstas (2.610):
+                  3. Formações Previstas ({formatPtBrNumber(totalFormacoes)}):
                 </strong>{' '}
-                Soma de todas as linhas de componentes (Coluna E). Das 2.610 formações previstas,{' '}
-                <strong>628</strong> (24,1%) foram concluídas (Coluna F).
+                Soma de todas as linhas de componentes (Coluna E). Das {formatPtBrNumber(totalFormacoes)} formações previstas,{' '}
+                <strong>{formatPtBrNumber(concluidasFormacoes)}</strong> ({pctConcluidasFormacoes}%) foram concluídas (Coluna F).
               </div>
             </div>
           </div>
